@@ -6,3 +6,6 @@ I am implementing CPU using Chisel, referring to [RISC-VとChiselで学ぶ は�
 sbt "testOnly cpu.HexTest"
 
 # Blue print
+<object data="https://docs.google.com/document/d/1CQvRGIKmbReRsouicq_R9BqWo9fp8gGSY-xdJbbxCNE/export?format=pdf" type="application/pdf" width="100%" height="100%">
+   <p><b>no display</b>: <a href="https://docs.google.com/document/d/1CQvRGIKmbReRsouicq_R9BqWo9fp8gGSY-xdJbbxCNE/export?format=pdf">download PDF</a>.</p>
+</object>
