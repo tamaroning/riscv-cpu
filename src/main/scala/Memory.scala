@@ -5,14 +5,14 @@ import chisel3.util._
 import chisel3.util.experimental.loadMemoryFromFile
 import common.Consts._
 
-// IO for loading an instruction
+// Instruction memory port class
 class ImemPortIo extends Bundle {
     val addr = Input(UInt(WORD_LEN.W))
     val inst = Output(UInt(WORD_LEN.W))
 }
 
-// IO for loading memory
-class DmemPortIo {
+// Data memory port class
+class DmemPortIo extends Bundle {
     val addr = Input(UInt(WORD_LEN.W))
     val rdata = Output(UInt(WORD_LEN.W))
 }
@@ -26,7 +26,7 @@ class Memory extends Module {
     // memory 8bit * 16384 
     val mem = Mem(16384, UInt(8.W))
 
-    loadMemoryFromFile(mem, "src/hex/fetch.hex")
+    loadMemoryFromFile(mem, "src/hex/lw.hex")
 
     // output an instruction the legth of 4 byte
     io.imem.inst := Cat(
@@ -34,5 +34,12 @@ class Memory extends Module {
         mem(io.imem.addr + 2.U(WORD_LEN.W)),
         mem(io.imem.addr + 1.U(WORD_LEN.W)),
         mem(io.imem.addr),
+    )
+
+    io.dmem.rdata := Cat(
+        mem(io.dmem.addr + 3.U(WORD_LEN.W)),
+        mem(io.dmem.addr + 2.U(WORD_LEN.W)),
+        mem(io.dmem.addr + 1.U(WORD_LEN.W)),
+        mem(io.dmem.addr),
     )
 }
