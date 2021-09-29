@@ -5,14 +5,22 @@ import chisel3.util._
 import chisel3.util.experimental.loadMemoryFromFile
 import common.Consts._
 
+// IO for loading an instruction
 class ImemPortIo extends Bundle {
     val addr = Input(UInt(WORD_LEN.W))
     val inst = Output(UInt(WORD_LEN.W))
 }
 
+// IO for loading memory
+class DmemPortIo {
+    val addr = Input(UInt(WORD_LEN.W))
+    val rdata = Output(UInt(WORD_LEN.W))
+}
+
 class Memory extends Module {
     val io = IO(new Bundle {
         val imem = new ImemPortIo()
+        val dmem = new DmemPortIo()
     })
 
     // memory 8bit * 16384 
