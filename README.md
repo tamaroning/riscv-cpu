@@ -9,6 +9,16 @@ x[rd] = M[x[rs1] + sext(imm_i)]
 
 sw rs2, offset(rs1)
 M[x[rs1] + sext(imm_s)] = x[rs2]
+
+add rd, rs1, rs2
+x[rd] = x[rs1] + x[rs2]
+
+sub rd, rs1, rs2
+x[rd] = x[rs1] + x[rs2]
+
+addi rs, rs1, imm_i
+x[rd] = x[rs1] +  sext(imm_i)
+
 ```
 
 # Test

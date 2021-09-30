@@ -43,20 +43,24 @@ class Core extends Module {
     // ***** Execute Stage: EX *****
 
     val alu_out = MuxCase(0.U(WORD_LEN.W), Seq(
-        (inst === LW) -> (rs1_data + imm_i_sext),
+        (inst === LW || inst === ADDI) -> (rs1_data + imm_i_sext),
         (inst === SW) -> (rs1_data + imm_s_sext),
+        (inst === ADD) -> (rs1_data + rs2_data),
+        (inst === SUB) -> (rs1_data - rs2_data),
     ))
 
     // ***** Memory Access Stage *****
 
+    // specify address and  get data
     io.dmem.addr := alu_out
     io.dmem.wen := (inst === SW)
     io.dmem.wdata := rs2_data
 
     // ***** Write Back Stage: WB *****
 
+    // write back data on the register wb_addr specifies
     val wb_data = io.dmem.rdata
-    when(inst === LW) {
+    when(inst === LW || inst === ADD || inst === ADDI || inst === SUB) {
         regfile(wb_addr) := wb_data
     }
 
