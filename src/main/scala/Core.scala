@@ -9,12 +9,13 @@ class Core extends Module {
     var io = IO(new Bundle {
         val imem = Flipped(new ImemPortIo())
         val dmem = Flipped(new DmemPortIo())
-        // output port "exit" turns true when the program finishes
+        // output port that turns true when the program finishes
         val exit = Output(Bool())
     })
 
     // create 32 registers the length of WORD_LEN(=32) bit
     val regfile = Mem(32, UInt(WORD_LEN.W))
+
 
     // ***** Instruction Fetch Stage: IF *****
     
@@ -26,11 +27,12 @@ class Core extends Module {
     io.imem.addr := pc_reg
     val inst = io.imem.inst
 
+
     // ***** Instruction Decode Stage: ID *****
 
     val rs1_addr = inst(19, 15)
     val rs2_addr = inst(24, 20)
-    val wb_addr = inst(11, 7)
+    val wb_addr = inst(11, 7) // write back register
     val rs1_data = Mux((rs1_addr =/= 0.U(WORD_LEN.W)), regfile(rs1_addr), 0.U(WORD_LEN.W))
     val rs2_data = Mux((rs2_addr =/= 0.U(WORD_LEN.W)), regfile(rs2_addr), 0.U(WORD_LEN.W))
 
@@ -40,38 +42,69 @@ class Core extends Module {
     val imm_s = Cat(inst(31, 25), inst(11,7))
     val imm_s_sext = Cat(Fill(20, imm_s(11)), imm_s)
 
+    val csignals = ListLookup(inst, 
+                    List(ALU_X, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+        Array(
+            LW   -> List(ALU_ADD, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_MEM),
+            SW   -> List(ALU_ADD, OP1_RS1, OP2_IMS, MEN_S, REN_X, WB_X  ),
+            ADD  -> List(ALU_ADD, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+            ADDI -> List(ALU_ADD, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+            SUB  -> List(ALU_SUB, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+            AND  -> List(ALU_AND, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+            OR   -> List(ALU_OR , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+            XOR  -> List(ALU_XOR, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+            ANDI -> List(ALU_AND, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+            ORI  -> List(ALU_OR , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+            XORI -> List(ALU_XOR, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+        )
+    )
+    //  ALU ops    oprand1    oprand2    mem_wrt?   wrt_bck?  wrt_bck_location
+    val exe_fun :: op1_sel :: op2_sel :: mem_wen :: rf_wen :: wb_sel :: Nil = csignals
+
+    val op1_data = MuxCase(0.U(WORD_LEN.W), Seq(
+        (op1_sel === OP1_RS1) -> rs1_data,
+    ))
+
+    val op2_data = MuxCase(0.U(WORD_LEN.W), Seq(
+        (op2_sel === OP2_RS2) -> rs2_data,
+        (op2_sel === OP2_IMI) -> imm_i_sext,
+        (op2_sel === OP2_IMS) -> imm_s_sext,
+    ))
+
+
     // ***** Execute Stage: EX *****
 
     val alu_out = MuxCase(0.U(WORD_LEN.W), Seq(
-        (inst === LW || inst === ADDI) -> (rs1_data + imm_i_sext),
-        (inst === SW) -> (rs1_data + imm_s_sext),
-        (inst === ADD) -> (rs1_data + rs2_data),
-        (inst === SUB) -> (rs1_data - rs2_data),
-        (inst === AND) -> (rs1_data + rs2_data),
-        (inst === OR) -> (rs1_data | rs2_data),
-        (inst === XOR) -> (rs1_data ^ rs2_data),
-        (inst === ANDI) -> (rs1_data & imm_i_sext),
-        (inst === ORI) -> (rs1_data | imm_i_sext),
-        (inst === XORI) -> (rs1_data ^ imm_i_sext),
+        (exe_fun === ALU_ADD) -> (op1_data + op2_data),
+        (exe_fun === ALU_SUB) -> (op1_data - op2_data),
+        (exe_fun === ALU_AND) -> (op1_data & op2_data),
+        (exe_fun === ALU_OR) -> (op1_data | op2_data),
+        (exe_fun === ALU_XOR) -> (op1_data ^ op2_data),
     ))
+
 
     // ***** Memory Access Stage *****
 
     // specify address and  get data
     io.dmem.addr := alu_out
-    io.dmem.wen := (inst === SW)
+    io.dmem.wen := mem_wen
     io.dmem.wdata := rs2_data
+
 
     // ***** Write Back Stage: WB *****
 
-    // write back data on the register wb_addr specifies
-    val wb_data = io.dmem.rdata
-    when(inst === LW || inst === ADD || inst === ADDI || inst === SUB || inst === AND || inst === OR || inst === XOR || inst === ANDI || inst === ORI || inst === XORI) {
+    // get write back data only when WB_MEM
+    val wb_data = MuxCase(alu_out, Seq(
+        (wb_sel === WB_MEM) -> io.dmem.rdata,
+    ))
+    // do write back only when REN_S
+    when(rf_wen === REN_S) {
         regfile(wb_addr) := wb_data
     }
 
     // set true to "exit" when inst == (the last line of the program)
     io.exit := (inst === 0x00602823.U(WORD_LEN.W))
+
 
     // debug
     printf(p"pc_reg    : 0x${Hexadecimal(pc_reg)}\n")
