@@ -19,6 +19,24 @@ x[rd] = x[rs1] + x[rs2]
 addi rs, rs1, imm_i
 x[rd] = x[rs1] +  sext(imm_i)
 
+and rd, rs1, rs2
+x[rd] = x[rs1] & x[rs2]
+
+or rd, rs1, rs2
+x[rd] = x[rs1] | x[rs2]
+
+xor rd, rs1, rs2
+x[rd] = x[rs1] ^ x[rs2]
+
+andi rd rs1, imm_i
+x[rd] = x[rs1] + sext(imm_i)
+
+ori rd rs1, imm_i
+x[rd] = x[rs1] | sext(imm_i)
+
+xori rd rs1, imm_i
+x[rd] = x[rs1] ^ sext(imm_i)
+
 ```
 
 # Test
