@@ -37,15 +37,21 @@ class Core extends Module {
     val imm_i = inst(31, 20)
     val imm_i_sext = Cat(Fill(20, imm_i(11)), imm_i) // sign extension
 
+    val imm_s = Cat(inst(31, 25), inst(11,7))
+    val imm_s_sext = Cat(Fill(20, imm_s(11)), imm_s)
+
     // ***** Execute Stage: EX *****
 
     val alu_out = MuxCase(0.U(WORD_LEN.W), Seq(
-        (inst === LW) -> (rs1_data + imm_i_sext) // calcurate address
+        (inst === LW) -> (rs1_data + imm_i_sext),
+        (inst === SW) -> (rs1_data + imm_s_sext),
     ))
 
     // ***** Memory Access Stage *****
 
     io.dmem.addr := alu_out
+    io.dmem.wen := (inst === SW)
+    io.dmem.wdata := rs2_data
 
     // ***** Write Back Stage: WB *****
 
@@ -55,7 +61,7 @@ class Core extends Module {
     }
 
     // set true to "exit" when inst == (the last line of the program)
-    io.exit := (inst === 0x14131211.U(WORD_LEN.W))
+    io.exit := (inst === 0x00602823.U(WORD_LEN.W))
 
     // debug
     printf(p"pc_reg    : 0x${Hexadecimal(pc_reg)}\n")
@@ -67,5 +73,7 @@ class Core extends Module {
     printf(p"rs2_data  : 0x${Hexadecimal(rs2_data)}\n")
     printf(p"wb_data   : 0x${Hexadecimal(wb_data)}\n")
     printf(p"dmem.addr : ${io.dmem.addr}\n")
+    printf(p"dmem.wen  : ${io.dmem.wen}\n")
+    printf(p"dmem.wdata: 0x${Hexadecimal(io.dmem.wdata)}\n")
     printf("--------\n")
 }
