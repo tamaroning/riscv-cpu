@@ -14,9 +14,9 @@ class ImemPortIo extends Bundle {
 // Data memory port class
 class DmemPortIo extends Bundle {
     val addr = Input(UInt(WORD_LEN.W))
-    val rdata = Output(UInt(WORD_LEN.W))
+    val rdata = Output(UInt(WORD_LEN.W)) // read data
     val wen = Input(Bool()) // timing dmem IO
-    val wdata = Input(UInt(WORD_LEN.W))
+    val wdata = Input(UInt(WORD_LEN.W)) // write data
 }
 
 class Memory extends Module {

@@ -60,6 +60,9 @@ class Core extends Module {
     )
     //  ALU ops    oprand1    oprand2    mem_wrt?   wrt_bck?  wrt_bck_location
     val exe_fun :: op1_sel :: op2_sel :: mem_wen :: rf_wen :: wb_sel :: Nil = csignals
+    // mem_wen: MEN_S: dont write memory, MEN_X: write memory
+    // rf_wen : REN_S: write back to reg, REN_X dont write back to reg
+    // wb_sel : WB_X: dont write back, WB_MEM: write back memory to reg, WB_ALU: write back ALU to reg
 
     val op1_data = MuxCase(0.U(WORD_LEN.W), Seq(
         (op1_sel === OP1_RS1) -> rs1_data,
@@ -85,7 +88,7 @@ class Core extends Module {
 
     // ***** Memory Access Stage *****
 
-    // specify address and  get data
+    // set wdata to addr only when wen is true
     io.dmem.addr := alu_out
     io.dmem.wen := mem_wen
     io.dmem.wdata := rs2_data
