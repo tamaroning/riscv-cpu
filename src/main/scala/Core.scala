@@ -22,10 +22,17 @@ class Core extends Module {
     // create PC register initialized with START_ADDR(=0)
     val pc_reg = RegInit(START_ADDR)
     // increment PC register by 4 byte
-    pc_reg := pc_reg + 4.U(WORD_LEN.W)
-
     io.imem.addr := pc_reg
     val inst = io.imem.inst
+    val pc_plus4 = pc_reg + 4.U(WORD_LEN.W)
+    val br_flg = Wire(Bool())
+    val br_target = Wire(UInt(WORD_LEN.W))
+    val alu_out = Wire(UInt(WORD_LEN.W))
+
+    val pc_next = MuxCase(pc_plus4, Seq(
+        br_flg -> br_target
+    ))
+    pc_reg := pc_next
 
 
     // ***** Instruction Decode Stage: ID *****
@@ -38,34 +45,41 @@ class Core extends Module {
 
     val imm_i = inst(31, 20)
     val imm_i_sext = Cat(Fill(20, imm_i(11)), imm_i) // sign extension
-
     val imm_s = Cat(inst(31, 25), inst(11,7))
     val imm_s_sext = Cat(Fill(20, imm_s(11)), imm_s)
+    val imm_b = Cat(inst(31), inst(7), inst(30, 25), inst(11, 8))
+    val imm_b_sext = Cat(Fill(19, imm_b(11)), imm_b, 0.U(1.U))
 
     val csignals = ListLookup(inst, 
                     List(ALU_X, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
         Array(
-            LW   -> List(ALU_ADD , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_MEM),
-            SW   -> List(ALU_ADD , OP1_RS1, OP2_IMS, MEN_S, REN_X, WB_X  ),
-            ADD  -> List(ALU_ADD , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            ADDI -> List(ALU_ADD , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SUB  -> List(ALU_SUB , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            AND  -> List(ALU_AND , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            OR   -> List(ALU_OR  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            XOR  -> List(ALU_XOR , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            ANDI -> List(ALU_AND , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            ORI  -> List(ALU_OR  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            XORI -> List(ALU_XOR , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SLL  -> List(ALU_SLL , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            SRL  -> List(ALU_SRL , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            SRA  -> List(ALU_SRA , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            SLLI -> List(ALU_SLL , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SRLI -> List(ALU_SRL , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SRAI -> List(ALU_SRA , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SLT  -> List(ALU_SLT , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            SLTU -> List(ALU_SLTU, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
-            SLTI -> List(ALU_SLT , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
-            SLTIU-> List(ALU_SLTU, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+            LW    -> List(ALU_ADD  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_MEM, CSR_X),
+            SW    -> List(ALU_ADD  , OP1_RS1, OP2_IMS, MEN_S, REN_X, WB_X  , CSR_X),
+            ADD   -> List(ALU_ADD  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            ADDI  -> List(ALU_ADD  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SUB   -> List(ALU_SUB  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            AND   -> List(ALU_AND  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            OR    -> List(ALU_OR   , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            XOR   -> List(ALU_XOR  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            ANDI  -> List(ALU_AND  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            ORI   -> List(ALU_OR   , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            XORI  -> List(ALU_XOR  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLL   -> List(ALU_SLL  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            SRL   -> List(ALU_SRL  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            SRA   -> List(ALU_SRA  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLLI  -> List(ALU_SLL  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SRLI  -> List(ALU_SRL  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SRAI  -> List(ALU_SRA  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLT   -> List(ALU_SLT  , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLTU  -> List(ALU_SLTU , OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLTI  -> List(ALU_SLT  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            SLTIU -> List(ALU_SLTU , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU, CSR_X),
+            BEQ   -> List(BR_BEQ   , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
+            BNE   -> List(BR_BNE   , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
+            BGE   -> List(BR_BGE   , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
+            BGEU  -> List(BR_BGEU  , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
+            BLT   -> List(BR_BLT   , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
+            BLTU  -> List(BR_BLTU  , OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X  , CSR_X),
         )
     )
     //  ALU ops    oprand1    oprand2    mem_wrt?   wrt_bck?  wrt_bck_location
@@ -87,7 +101,7 @@ class Core extends Module {
 
     // ***** Execute Stage: EX *****
 
-    val alu_out = MuxCase(0.U(WORD_LEN.W), Seq(
+    alu_out := MuxCase(0.U(WORD_LEN.W), Seq(
         (exe_fun === ALU_ADD) -> (op1_data + op2_data),
         (exe_fun === ALU_SUB) -> (op1_data - op2_data),
         (exe_fun === ALU_AND) -> (op1_data & op2_data),
@@ -99,6 +113,16 @@ class Core extends Module {
         (exe_fun === ALU_SLT) -> (op1_data.asSInt() < op2_data.asSInt()).asUInt(),
         (exe_fun === ALU_SLTU)-> (op1_data < op2_data).asUInt(),
     ))
+
+    br_flg := MuxCase(false.B, Seq(
+        (exe_fun === BR_BEQ)  ->  (op1_data === op2_data),
+        (exe_fun === BR_BNE)  -> !(op1_data === op2_data),
+        (exe_fun === BR_BLT)  ->  (op1_data.asSInt() < op2_data.asSInt()),
+        (exe_fun === BR_BGE)  -> !(op1_data.asSInt() < op2_data.asSInt()),
+        (exe_fun === BR_BLTU) ->  (op1_data < op2_data),
+        (exe_fun === BR_BGEU) -> !(op1_data < op2_data),
+    ))
+    br_target := pc_reg + imm_b_sext
 
 
     // ***** Memory Access Stage *****
