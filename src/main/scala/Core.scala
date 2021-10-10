@@ -15,7 +15,7 @@ class Core extends Module {
 
     // create 32 registers the length of WORD_LEN(=32) bit
     val regfile = Mem(32, UInt(WORD_LEN.W))
-
+    val csr_regfile = Mem(4096, UInt(WORD_LEN.W))
 
     // ***** Instruction Fetch Stage: IF *****
     
@@ -55,9 +55,11 @@ class Core extends Module {
     val imm_j_sext = Cat(Fill(11, imm_j(19)), imm_j, 0.U(1.U))
     val imm_u = inst(31,12)
     val imm_u_shifted = Cat(imm_u, Fill(12, 0.U))
+    val imm_z = inst(19,15)
+    val imm_z_uext = Cat(Fill(27, 0.U), imm_z)
 
     val csignals = ListLookup(inst, 
-                    List(ALU_X, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+                    List(ALU_X, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X, CSR_X),
         Array(
             LW    -> List(ALU_ADD  , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_MEM, CSR_X),
             SW    -> List(ALU_ADD  , OP1_RS1, OP2_IMS, MEN_S, REN_X, WB_X  , CSR_X),
@@ -90,10 +92,16 @@ class Core extends Module {
             JALR  -> List(ALU_JALR , OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_PC , CSR_X),
             LUI   -> List(ALU_ADD  , OP1_X  , OP2_IMU, MEN_X, REN_S, WB_ALU, CSR_X),
             AUIPC -> List(ALU_ADD  , OP1_PC , OP2_IMU, MEN_X, REN_S, WB_ALU, CSR_X),
+            CSRRW -> List(ALU_COPY1, OP1_RS1, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_W),
+            CSRRWI-> List(ALU_COPY1, OP1_IMZ, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_W),
+            CSRRS -> List(ALU_COPY1, OP1_RS1, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_S),
+            CSRRSI-> List(ALU_COPY1, OP1_IMZ, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_S),
+            CSRRC -> List(ALU_COPY1, OP1_RS1, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_C),
+            CSRRCI-> List(ALU_COPY1, OP1_IMZ, OP2_X  , MEN_X, REN_S, WB_CSR, CSR_C),
         )
     )
     //  ALU ops    oprand1    oprand2    mem_wrt?   wrt_bck?  wrt_bck_location
-    val exe_fun :: op1_sel :: op2_sel :: mem_wen :: rf_wen :: wb_sel :: Nil = csignals
+    val exe_fun :: op1_sel :: op2_sel :: mem_wen :: rf_wen :: wb_sel :: csr_cmd :: Nil = csignals
     // mem_wen: MEN_S: dont write memory, MEN_X: write memory
     // rf_wen : REN_S: write back to reg, REN_X dont write back to reg
     // wb_sel : WB_X: dont write back, WB_MEM: write back memory to reg, WB_ALU: write back ALU to reg
@@ -101,6 +109,7 @@ class Core extends Module {
     val op1_data = MuxCase(0.U(WORD_LEN.W), Seq(
         (op1_sel === OP1_RS1) -> rs1_data,
         (op1_sel === OP1_PC)  -> pc_reg,
+        (op1_sel === OP1_IMZ) -> imm_z_uext,
     ))
 
     val op2_data = MuxCase(0.U(WORD_LEN.W), Seq(
@@ -125,6 +134,7 @@ class Core extends Module {
         (exe_fun === ALU_SLT)  -> (op1_data.asSInt() < op2_data.asSInt()).asUInt(),
         (exe_fun === ALU_SLTU) -> (op1_data < op2_data).asUInt(),
         (exe_fun === ALU_JALR) -> ((op1_data + op2_data) & ~1.U(WORD_LEN.W)),
+        (exe_fun === ALU_COPY1)-> op1_data,
     ))
 
     br_flg := MuxCase(false.B, Seq(
@@ -141,16 +151,30 @@ class Core extends Module {
     // ***** Memory Access Stage *****
 
     // set wdata to addr only when wen is true
-    io.dmem.addr := alu_out
-    io.dmem.wen := mem_wen
+    io.dmem.addr  := alu_out
+    io.dmem.wen   := mem_wen
     io.dmem.wdata := rs2_data
 
-
+    // CSR
+    val csr_addr = Mux(csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), inst(31,20))
+    val csr_rdata = csr_regfile(csr_addr)
+    val csr_wdata = MuxCase(0.U(WORD_LEN.W), Seq(
+        (csr_cmd === CSR_W) -> op1_data,
+        (csr_cmd === CSR_S) -> (csr_rdata | op1_data),
+        (csr_cmd === CSR_C) -> (csr_rdata & ~op1_data),
+        (csr_cmd === CSR_E) -> 11.U(WORD_LEN.W)
+    ))
+    
+    when(csr_cmd > 0.U){
+        csr_regfile(csr_addr) := csr_wdata
+    }
+    
     // ***** Write Back Stage: WB *****
 
     // get write back data only when WB_MEM
     val wb_data = MuxCase(alu_out, Seq(
         (wb_sel === WB_MEM) -> io.dmem.rdata,
+        (wb_sel === WB_CSR) -> csr_rdata,
     ))
     // do write back only when REN_S
     when(rf_wen === REN_S) {
